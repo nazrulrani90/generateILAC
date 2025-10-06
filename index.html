@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ILAC Calculator</title>
+  <style>
+    :root{--bg:#f7f9fc;--card:#ffffff;--muted:#6b7280;--accent:#0f62fe}
+    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; background:var(--bg); margin:0; padding:24px; color:#0f172a}
+    .container{max-width:980px;margin:0 auto}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:0;color:var(--muted)}
+    .grid{display:grid;gap:12px}
+    .inputs{grid-template-columns:1fr 1fr}
+    .full{grid-column:1/-1}
+    .card{background:var(--card);padding:14px;border-radius:8px;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    textarea, input, select{width:100%;padding:10px;border-radius:6px;border:1px solid #e6eef8;font-size:14px;box-sizing:border-box;background:#fbfdff}
+    textarea{min-height:110px;resize:vertical}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:0;background:var(--accent);color:white;cursor:pointer}
+    .btn.secondary{background:#eef2ff;color:#0f172a;border:1px solid #e0e7ff}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .muted{color:var(--muted);font-size:13px}
+    pre.output{white-space:pre-wrap;word-break:break-word;background:#0f172f;color:#e6f7ff;padding:12px;border-radius:6px;min-height:160px;overflow:auto}
+    footer{margin-top:14px;color:var(--muted);font-size:13px}
+    @media (max-width:880px){.inputs{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>ILAC Calculator — Web Prototype</h1>
+        <p class="lead">Enter facts and authorities, press Generate to create a structured ILAC draft. Use for teaching and practice only.</p>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <div class="grid inputs" id="inputs-grid">
+          <div>
+            <label for="facts">Facts (short paragraph)</label>
+            <textarea id="facts" placeholder="Write the factual summary here. Example: Ali sold his car to Abu without disclosing that the brakes were faulty."></textarea>
+          </div>
+          <div>
+            <label for="question">Legal Question (optional)</label>
+            <input id="question" placeholder="E.g. Whether Ali is liable for misrepresentation under s.18 of the Contracts Act?" />
+          </div>
+
+          <div>
+            <label for="laws">Statutes / Laws (one per line or separated by ';')</label>
+            <textarea id="laws" placeholder="Contracts Act 1950 s.18; Sale of Goods Act s.16"></textarea>
+          </div>
+
+          <div>
+            <label for="cases">Cases (one per line, optional short holding)</label>
+            <textarea id="cases" placeholder="Tan Chye Chew v Eastern Mining & Metals Co - misrepresentation principle"></textarea>
+          </div>
+
+          <div class="full">
+            <label for="disputes">Points of dispute / Counter-arguments (one per line)</label>
+            <textarea id="disputes" placeholder="E.g. Buyer inspected the car; Seller had no knowledge"></textarea>
+          </div>
+
+          <div>
+            <label for="level">Detail level</label>
+            <select id="level">
+              <option value="concise">Concise</option>
+              <option value="standard" selected>Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="tone">Tone</label>
+            <select id="tone">
+              <option value="teaching" selected>Teaching (explanatory)</option>
+              <option value="strict">Strict (exam style)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn" id="generate">Generate ILAC</button>
+          <button class="btn secondary" id="clear">Clear Inputs</button>
+          <div style="margin-left:auto" class="muted">Output will appear below. Editable for refinement.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <label style="margin:0;font-weight:600">Generated ILAC (editable)</label>
+          <div style="margin-left:auto" class="row">
+            <button class="btn secondary" id="copyBtn">Copy</button>
+            <button class="btn secondary" id="downloadBtn">Download .txt</button>
+            <button class="btn" id="sampleBtn">Load Sample</button>
+          </div>
+        </div>
+        <textarea id="output" class="output" placeholder="Generated ILAC appears here and can be edited."></textarea>
+      </section>
+
+      <section class="card muted">
+        <strong>Notes</strong>
+        <ul>
+          <li>This is a drafting aid. It does not replace legal research or authoritative citation checks.</li>
+          <li>To improve accuracy, integrate statute and case retrieval and a trained element extractor.</li>
+        </ul>
+      </section>
+
+      <footer>
+        <div class="muted">Created for teaching. To host: upload this file to GitHub Pages, Netlify, or serve locally.</div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // Utility: split by newline or semicolon and trim
+    function splitLines(text) {
+      if (!text) return [];
+      return text.split(/\\n|;/).map(s => s.trim()).filter(Boolean);
+    }
+
+    // Build Issue
+    function buildIssue(facts, question) {
+      if (question && question.trim().length) return question.trim();
+      const firstSent = (facts || '').split(/[.\\n]/)[0] || facts;
+      if (!firstSent) return 'State the legal issue.';
+      // create a plain legal question style
+      return 'Whether ' + firstSent.trim() + '?';
+    }
+
+    // Build Law
+    function buildLaw(lawsText) {
+      const arr = splitLines(lawsText);
+      if (!arr.length) return 'Relevant statute(s) and principle(s): [insert statute sections and concise principles].';
+      return arr.map((l,i) => (i+1) + '. ' + l).join('\\n');
+    }
+
+    // Build Cases
+    function buildCases(casesText) {
+      const arr = splitLines(casesText);
+      if (!arr.length) return '';
+      return arr.map((c,i) => (i+1) + '. ' + c).join('\\n');
+    }
+
+    // Application builder - naive rule-based mapping
+    function buildApplication(facts, lawsText, casesText, disputesText, level) {
+      const factSents = (facts || '').split(/[.\\n]/).map(s => s.trim()).filter(Boolean);
+      const lawsArr = splitLines(lawsText);
+      const casesArr = splitLines(casesText);
+      const disputesArr = splitLines(disputesText);
+
+      const detailMultiplier = level === 'concise' ? 0 : level === 'detailed' ? 1.6 : 1;
+
+      let paras = [];
+      if (lawsArr.length === 0) {
+        // generic mapping
+        paras.push('Applying the legal principles to the facts: ' + (facts || '[facts not supplied]') + '.');
+      } else {
+        lawsArr.forEach((law, idx) => {
+          const evidence = factSents[idx] || factSents[0] || facts || '';
+          let para = 'Under ' + law + ', ' + (evidence ? (evidence + ' ') : '') + 'the factual matrix suggests that the statutory elements are ' + (detailMultiplier > 0.9 ? 'likely' : 'possibly') + ' satisfied.';
+          if (casesArr[idx]) para += ' This aligns with ' + casesArr[idx] + '.';
+          if (detailMultiplier > 1) para += ' A more detailed consideration shows specific elements are met because ' + (evidence.split(' ').slice(0,18).join(' ')) + '...';
+          paras.push(para);
+        });
+      }
+
+      if (disputesArr.length) {
+        paras.push('Counter-arguments: ' + disputesArr.join('; ') + '. On balance, the evidence above carries greater weight.');
+      }
+
+      return paras.join('\\n\\n');
+    }
+
+    // Build Conclusion
+    function buildConclusion(facts, lawsText, level, tone) {
+      const confident = (facts && facts.length > 40 && lawsText && lawsText.length > 10);
+      const base = confident ? 'I conclude that the claimant is likely to succeed on the main issue.'
+                             : 'On the available information, the balance of probabilities favours the claimant.';
+      if (level === 'concise') return 'Conclusion: ' + base;
+      if (tone === 'teaching') return base + ' The conclusion follows because the statutory elements correspond to the facts as discussed above.';
+      return base;
+    }
+
+    // Compose ILAC
+    function generateIlacDraft({facts, question, laws, cases, disputes, level, tone}) {
+      const issue = buildIssue(facts, question);
+      const law = buildLaw(laws);
+      const casesSection = buildCases(cases);
+      const application = buildApplication(facts, laws, cases, disputes, level);
+      const conclusion = buildConclusion(facts, laws, level, tone);
+
+      let out = 'ISSUE\\n' + issue + '\\n\\n' +
+                'LAW\\n' + law + '\\n';
+
+      if (casesSection) out += '\\nCASES\\n' + casesSection + '\\n';
+
+      out += '\\nAPPLICATION\\n' + application + '\\n\\n' +
+             'CONCLUSION\\n' + conclusion;
+
+      return out;
+    }
+
+    // DOM hooks
+    const factsEl = document.getElementById('facts');
+    const questionEl = document.getElementById('question');
+    const lawsEl = document.getElementById('laws');
+    const casesEl = document.getElementById('cases');
+    const disputesEl = document.getElementById('disputes');
+    const levelEl = document.getElementById('level');
+    const toneEl = document.getElementById('tone');
+    const outputEl = document.getElementById('output');
+    const generateBtn = document.getElementById('generate');
+    const clearBtn = document.getElementById('clear');
+    const copyBtn = document.getElementById('copyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const sampleBtn = document.getElementById('sampleBtn');
+
+    generateBtn.addEventListener('click', () => {
+      const draft = generateIlacDraft({
+        facts: factsEl.value,
+        question: questionEl.value,
+        laws: lawsEl.value,
+        cases: casesEl.value,
+        disputes: disputesEl.value,
+        level: levelEl.value,
+        tone: toneEl.value
+      });
+      outputEl.value = draft;
+      // put focus on output for quick editing
+      outputEl.focus();
+    });
+
+    clearBtn.addEventListener('click', () => {
+      factsEl.value = '';
+      questionEl.value = '';
+      lawsEl.value = '';
+      casesEl.value = '';
+      disputesEl.value = '';
+      outputEl.value = '';
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(outputEl.value || '');
+        alert('Copied to clipboard.');
+      } catch (e) {
+        alert('Unable to copy. Select and copy manually.');
+      }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      const text = outputEl.value || '';
+      const blob = new Blob([text], {type: 'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ilac-draft.txt';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    sampleBtn.addEventListener('click', () => {
+      factsEl.value = 'Ali sold a secondhand car to Abu. Before sale, Ali knew the brakes were defective but did not disclose it. Abu inspected the car briefly and drove home. Two days later the brakes failed and Abu was injured.';
+      questionEl.value = 'Whether Ali is liable for misrepresentation or breach of duty in selling the car?';
+      lawsEl.value = 'Contracts Act 1950 s.18 - duty to disclose misrepresentation; Sale of Goods Act s.16 - implied condition of merchantable quality';
+      casesEl.value = 'Tan Chye Chew v Eastern Mining & Metals Co - seller knowledge and duty; Smith v Hughes - reliance and inspection';
+      disputesEl.value = 'Ali claims Abu inspected the car and therefore accepted the defects; Ali argues there was no deliberate misrepresentation';
+      levelEl.value = 'standard';
+      toneEl.value = 'teaching';
+      alert('Sample loaded. Click Generate ILAC to see the draft.');
+    });
+
+    // allow pressing Ctrl+Enter in any input to generate
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        generateBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>
